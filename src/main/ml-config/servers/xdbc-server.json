@@ -1,0 +1,8 @@
+{
+  "server-name": "java-tester-xdbc",
+  "server-type": "xdbc",
+  "root": "/",
+  "port": "%%mlXdbcPort%%",
+  "modules-database": "%%MODULES_DATABASE%%",
+  "content-database": "%%DATABASE%%"
+}
