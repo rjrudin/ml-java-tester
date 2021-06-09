@@ -144,10 +144,18 @@ public class PerformanceTester {
         deleteData();
 
         ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
-        List<Content[]> batches = buildContentBatches();
+
+        ContentCreateOptions options = new ContentCreateOptions();
+        options.setFormatXml();
+        options.setCollections(new String[]{COLLECTION});
 
         long start = System.currentTimeMillis();
-        batches.forEach(contentArray -> {
+        for (int i = 0; i < batchCount; i++) {
+            Content[] contentArray = new Content[batchSize];
+            for (int j = 0; j < batchSize; j++) {
+                String uuid = UUID.randomUUID().toString();
+                contentArray[j] = ContentFactory.newContent(uuid + ".xml", "<hello>world</hello>", options);
+            }
             executorService.execute(() -> {
                 // XCC docs state that Session is not thread-safe and also not to bother with pooling Session objects
                 // because they are so cheap to create - https://docs.marklogic.com/guide/xcc/concepts#id_55196
@@ -160,31 +168,10 @@ public class PerformanceTester {
                     session.close();
                 }
             });
-        });
+        }
 
         waitForThreadsToFinish(executorService);
         addDuration("XCC", System.currentTimeMillis() - start);
-    }
-
-    /**
-     * Build batches of XCC Content objects based on batchCount and batchSize.
-     *
-     * @return
-     */
-    private static List<Content[]> buildContentBatches() {
-        List<Content[]> documents = new ArrayList<>();
-        ContentCreateOptions options = new ContentCreateOptions();
-        options.setFormatXml();
-        options.setCollections(new String[]{COLLECTION});
-        for (int i = 0; i < batchCount; i++) {
-            Content[] docs = new Content[batchSize];
-            for (int j = 0; j < batchSize; j++) {
-                String uuid = UUID.randomUUID().toString();
-                docs[j] = ContentFactory.newContent(uuid + ".xml", "<hello>world</hello>", options);
-            }
-            documents.add(docs);
-        }
-        return documents;
     }
 
     /**
@@ -213,13 +200,21 @@ public class PerformanceTester {
                 .withThreadCount(threadCount)
                 .withBatchSize(batchSize);
 
-        List<List<DocumentWriteOperation>> batches = buildDocumentBatches();
-        long start = System.currentTimeMillis();
-        batches.forEach(docs -> {
-            writeBatcher.addAll(docs.stream());
-        });
+        ObjectMapper objectMapper = new ObjectMapper();
+        DocumentMetadataHandle metadata = new DocumentMetadataHandle()
+                .withCollections(COLLECTION, COLLECTION + "2")
+                .withPermission("rest-reader", DocumentMetadataHandle.Capability.READ, DocumentMetadataHandle.Capability.UPDATE);
 
+        long start = System.currentTimeMillis();
+        for (int i = 0; i < batchCount; i++) {
+            for (int j = 0; j < batchSize; j++) {
+                ObjectNode content = objectMapper.createObjectNode().put("hello", "world");
+                writeBatcher.add(new DocumentWriteOperationImpl(DocumentWriteOperation.OperationType.DOCUMENT_WRITE,
+                        UUID.randomUUID() + ".json", metadata, new JacksonHandle(content)));
+            }
+        }
         writeBatcher.flushAndWait();
+
         addDuration("DMSDK", System.currentTimeMillis() - start);
         dataMovementManager.stopJob(writeBatcher);
     }
@@ -248,83 +243,23 @@ public class PerformanceTester {
         }
         InputCaller.BulkInputCaller<JsonNode> bulkInputCaller = inputCaller.bulkCaller(callContexts, threadCount);
 
-        List<List<DocumentWriteOperation>> batches = buildDocumentBatches();
-        List<List<ObjectNode>> jsonBatches = convertToJsonObjects(batches);
-
+        ObjectMapper objectMapper = new ObjectMapper();
         long start = System.currentTimeMillis();
-        jsonBatches.forEach(batch -> {
-            batch.forEach(object -> bulkInputCaller.accept(object));
-        });
+        for (int i = 0; i < batchCount; i++) {
+            for (int j = 0; j < batchSize; j++) {
+                ObjectNode input = objectMapper.createObjectNode();
+                input.putObject("content").put("hello", "world");
+                input.put("uri", UUID.randomUUID() + ".json");
+                input.putArray("collections").add(COLLECTION);
+                ArrayNode permissions = input.putArray("permissions");
+                permissions.addObject().put("roleName", "rest-reader").put("capability", "read");
+                permissions.addObject().put("roleName", "rest-reader").put("capability", "update");
+                bulkInputCaller.accept(input);
+            }
+        }
 
         bulkInputCaller.awaitCompletion();
         addDuration("Bulk", System.currentTimeMillis() - start);
-    }
-
-    /**
-     * Converts DocumentWriteOperations into JSON objects that can be passed to ML via a BulkInputCaller. This is
-     * intended to demonstrate an example of where the client is able to specify some details like collections and
-     * permissions, such that those need to be included along with each document that they describe. The DS endpoint is
-     * expected to utilize this data when inserting the document.
-     *
-     * @param batches
-     * @return
-     */
-    private static List<List<ObjectNode>> convertToJsonObjects(List<List<DocumentWriteOperation>> batches) {
-        ObjectMapper objectMapper = new ObjectMapper();
-        List<List<ObjectNode>> jsonBatches = new ArrayList();
-        for (List<DocumentWriteOperation> batch : batches) {
-            List<ObjectNode> objects = new ArrayList();
-            jsonBatches.add(objects);
-            for (DocumentWriteOperation op : batch) {
-                JsonNode content = ((JacksonHandle) op.getContent()).get();
-
-                // Demonstrates an example where the client provides more of the details by wrapping the content in a
-                // JSON object that includes URI + metadata. The intent is to be a bit more realistic where a client
-                // would specify things like collections/permissions, such that the DS endpoint can't just define those
-                // itself.
-                ObjectNode node = objectMapper.createObjectNode();
-                node.put("uri", UUID.randomUUID() + ".json");
-                node.set("content", content);
-
-                // Including the metadata as a string of XML results in slower performance in the DS endpoint, which if
-                // written in SJS, must do some fairly expensive xpath'ing to extract the data. So the metadata is instead
-                // converted to JSON here.
-                DocumentMetadataHandle metadata = (DocumentMetadataHandle) op.getMetadata();
-                ArrayNode collections = node.putArray("collections");
-                metadata.getCollections().forEach(coll -> collections.add(coll));
-                ArrayNode permissions = node.putArray("permissions");
-                metadata.getPermissions().forEach((roleName, capabilities) -> {
-                    capabilities.forEach(capability -> permissions.addObject().put("roleName", roleName).put("capability", capability.name().toLowerCase()));
-                });
-
-                objects.add(node);
-            }
-        }
-        return jsonBatches;
-    }
-
-    /**
-     * Build batches of DocumentWriteOperation objects based on batchCount and batchSize.
-     *
-     * @return
-     */
-    private static List<List<DocumentWriteOperation>> buildDocumentBatches() {
-        DocumentMetadataHandle metadata = new DocumentMetadataHandle()
-                .withCollections(COLLECTION, COLLECTION + "2")
-                .withPermission("rest-reader", DocumentMetadataHandle.Capability.READ, DocumentMetadataHandle.Capability.UPDATE);
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        List<List<DocumentWriteOperation>> documents = new ArrayList<>();
-        for (int i = 0; i < batchCount; i++) {
-            List<DocumentWriteOperation> docs = new ArrayList<>();
-            for (int j = 0; j < batchSize; j++) {
-                ObjectNode content = objectMapper.createObjectNode().put("hello", "world");
-                docs.add(new DocumentWriteOperationImpl(DocumentWriteOperation.OperationType.DOCUMENT_WRITE,
-                        UUID.randomUUID() + ".json", metadata, new JacksonHandle(content)));
-            }
-            documents.add(docs);
-        }
-        return documents;
     }
 
     /**
