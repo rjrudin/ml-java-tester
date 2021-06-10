@@ -163,12 +163,14 @@ public class PerformanceTester {
         options.setFormatXml();
         options.setCollections(new String[]{COLLECTION});
 
+        String xmlDocument = buildXmlDocument();
+
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             Content[] contentArray = new Content[batchSize];
             for (int j = 0; j < batchSize; j++) {
                 String uuid = UUID.randomUUID().toString();
-                contentArray[j] = ContentFactory.newContent(uuid + ".xml", buildXmlDocument(), options);
+                contentArray[j] = ContentFactory.newContent(uuid + ".xml", xmlDocument, options);
             }
             executorService.execute(() -> {
                 // XCC docs state that Session is not thread-safe and also not to bother with pooling Session objects
@@ -218,13 +220,15 @@ public class PerformanceTester {
                 .withCollections(COLLECTION, COLLECTION + "2")
                 .withPermission("rest-reader", DocumentMetadataHandle.Capability.READ, DocumentMetadataHandle.Capability.UPDATE);
 
+        ObjectNode jsonDoc = buildJsonDocument();
+
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
                 writeBatcher.add(new DocumentWriteOperationImpl(
                         DocumentWriteOperation.OperationType.DOCUMENT_WRITE,
                         UUID.randomUUID() + ".json", metadata,
-                        new JacksonHandle(buildJsonDocument())));
+                        new JacksonHandle(jsonDoc)));
             }
         }
         writeBatcher.flushAndWait();
@@ -262,21 +266,20 @@ public class PerformanceTester {
         }
         InputCaller.BulkInputCaller<JsonNode> bulkInputCaller = inputCaller.bulkCaller(callContexts, threadCount);
 
+        final ObjectNode jsonDoc = buildJsonDocument();
+        final ObjectNode metadata = objectMapper.createObjectNode();
+        metadata.putArray("collections").add(COLLECTION);
+        ArrayNode permissions = metadata.putArray("permissions");
+        permissions.addObject().put("roleName", "rest-reader").put("capability", "read");
+        permissions.addObject().put("roleName", "rest-reader").put("capability", "update");
+
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
-                if (simpleBulkService) {
-                    bulkInputCaller.accept(buildJsonDocument());
-                } else {
-                    ObjectNode metadata = objectMapper.createObjectNode();
-                    metadata.put("uri", UUID.randomUUID() + ".json");
-                    metadata.putArray("collections").add(COLLECTION);
-                    ArrayNode permissions = metadata.putArray("permissions");
-                    permissions.addObject().put("roleName", "rest-reader").put("capability", "read");
-                    permissions.addObject().put("roleName", "rest-reader").put("capability", "update");
+                if (!simpleBulkService) {
                     bulkInputCaller.accept(metadata);
-                    bulkInputCaller.accept(buildJsonDocument());
                 }
+                bulkInputCaller.accept(jsonDoc);
             }
         }
 

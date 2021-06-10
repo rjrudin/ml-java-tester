@@ -10,7 +10,7 @@ if (fn.count(input) == 1) {
 if (endpointConstants.simpleBulkService === true) {
   for (var content of input) {
     xdmp.documentInsert(
-      "/example/" + sem.uuidString() + ".json",
+      "/simple/" + sem.uuidString() + ".json",
       content,
       [xdmp.permission("rest-reader", "read"), xdmp.permission("rest-writer", "update")],
       ["data", "simpleBulkService"]
@@ -24,7 +24,7 @@ if (endpointConstants.simpleBulkService === true) {
     const metadata = inputArray[i].toObject();
     const content = inputArray[i + 1];
     xdmp.documentInsert(
-      "/example/" + metadata.uri,
+      "/complex/" + sem.uuidString() + ".json",
       content,
       metadata.permissions.map(perm => xdmp.permission(xdmp.role(perm.roleName), perm.capability)),
       metadata.collections
