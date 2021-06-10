@@ -8,13 +8,10 @@ if (fn.count(input) == 1) {
 }
 
 if (endpointConstants.simpleBulkService === true) {
+  const permissions = [xdmp.permission("rest-reader", "read"), xdmp.permission("rest-writer", "update")];
+  const collections = ["data", "simpleBulkService"];
   for (var content of input) {
-    xdmp.documentInsert(
-      "/simple/" + sem.uuidString() + ".json",
-      content,
-      [xdmp.permission("rest-reader", "read"), xdmp.permission("rest-writer", "update")],
-      ["data", "simpleBulkService"]
-    );
+    xdmp.documentInsert("/simple/" + sem.uuidString() + ".json", content, permissions, collections);
   }
 } else {
   // Send two objects for each document - a metadata JSON object, then the content object

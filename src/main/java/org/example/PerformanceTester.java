@@ -159,11 +159,12 @@ public class PerformanceTester {
 
         ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
 
-        ContentCreateOptions options = new ContentCreateOptions();
+        // The same data is inserted so we don't spend a bunch of time creating Java objects, which muddies the water
+        // when testing performance
+        final ContentCreateOptions options = new ContentCreateOptions();
         options.setFormatXml();
         options.setCollections(new String[]{COLLECTION});
-
-        String xmlDocument = buildXmlDocument();
+        final String xmlDocument = buildXmlDocument();
 
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
@@ -216,11 +217,12 @@ public class PerformanceTester {
                 .withThreadCount(threadCount)
                 .withBatchSize(batchSize);
 
-        DocumentMetadataHandle metadata = new DocumentMetadataHandle()
+        // The same data is inserted so we don't spend a bunch of time creating Java objects, which muddies the water
+        // when testing performance
+        final DocumentMetadataHandle metadata = new DocumentMetadataHandle()
                 .withCollections(COLLECTION, COLLECTION + "2")
                 .withPermission("rest-reader", DocumentMetadataHandle.Capability.READ, DocumentMetadataHandle.Capability.UPDATE);
-
-        ObjectNode jsonDoc = buildJsonDocument();
+        final ObjectNode jsonDoc = buildJsonDocument();
 
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
@@ -266,6 +268,8 @@ public class PerformanceTester {
         }
         InputCaller.BulkInputCaller<JsonNode> bulkInputCaller = inputCaller.bulkCaller(callContexts, threadCount);
 
+        // The same data is inserted so we don't spend a bunch of time creating Java objects, which muddies the water
+        // when testing performance
         final ObjectNode jsonDoc = buildJsonDocument();
         final ObjectNode metadata = objectMapper.createObjectNode();
         metadata.putArray("collections").add(COLLECTION);
