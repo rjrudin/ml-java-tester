@@ -14,6 +14,7 @@ import com.marklogic.client.document.DocumentWriteOperation;
 import com.marklogic.client.impl.DocumentWriteOperationImpl;
 import com.marklogic.client.io.DocumentMetadataHandle;
 import com.marklogic.client.io.JacksonHandle;
+import com.marklogic.client.io.StringHandle;
 import com.marklogic.xcc.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,16 +37,18 @@ public class PerformanceTester {
     private static boolean testXcc = true;
     private static boolean testDmsdk = true;
     private static boolean testBulk = true;
+    private static boolean simpleBulkService = true;
+
     private static int batchCount = 100;
     private static int batchSize = 100;
-    private static int iterations = 3;
+    private static int iterations = 5;
     private static int threadCount = 32;
+
     private static String host = "localhost";
     private static int restPort = 8003;
     private static int xdbcPort = 8004;
     private static String username = "admin";
     private static String password = "admin";
-    private static boolean simpleBulkService = true;
 
     private static final String COLLECTION = "data";
 
@@ -54,22 +57,6 @@ public class PerformanceTester {
 
     private static Map<String, List<Long>> durationsMap = new LinkedHashMap();
 
-    /**
-     * Localhost:
-     * XCC 8003: [3265, 2454, 2625, 2902, 2948], [2833, 2538, 2493, 2320, 2356]
-     * XCC 8004: [2900, 2455, 2341, 2542, 2722], [2755, 2386, 2230, 2243, 2399]
-     * <p>
-     * XCC: [3044, 2477, 2599, 2551, 2454]
-     * DMSDK: [2471, 1838, 1800, 1689, 3007]
-     * Bulk: [1185, 911, 824, 876, 2016]
-     * <p>
-     * Remote:
-     * XCC: [7866, 7600, 9750, 7596, 7628]
-     * DMSDK: [4231, 900, 890, 900, 900]
-     * Bulk: [366, 349, 379, 375, 368]
-     *
-     * @param args
-     */
     public static void main(String[] args) {
         applyArgs(args);
 
@@ -247,19 +234,19 @@ public class PerformanceTester {
     private static void testBulkInputCaller() {
         deleteData();
 
+        ObjectMapper objectMapper = new ObjectMapper();
         InputCaller<JsonNode> inputCaller;
 
-        JacksonHandle apiHandle = databaseClient.newServerEval()
-                .javascript("xdmp.eval('cts.doc(\"/writeDocuments.api\")', {}, {database: xdmp.database('java-tester-modules')})")
-                .eval(new JacksonHandle());
-
+//        JacksonHandle apiHandle = databaseClient.newServerEval()
+//                .javascript("xdmp.eval('cts.doc(\"/writeDocuments.api\")', {}, {database: xdmp.database('java-tester-modules')})")
+//                .eval(new JacksonHandle());
+//
         try {
+            StringHandle apiHandle = simpleBulkService ? new StringHandle(SIMPLE_BULK_API) : new StringHandle(COMPLEX_BULK_API);
             inputCaller = InputCaller.on(databaseClient, apiHandle, new JacksonHandle());
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
-
-        ObjectMapper objectMapper = new ObjectMapper();
 
         JacksonHandle endpointConstants = new JacksonHandle(
                 objectMapper.createObjectNode().put("simpleBulkService", simpleBulkService)
@@ -279,12 +266,14 @@ public class PerformanceTester {
                     input.put("hello", "world");
                     bulkInputCaller.accept(input);
                 } else {
-                    input.putObject("content").put("hello", "world");
-                    input.put("uri", UUID.randomUUID() + ".json");
-                    input.putArray("collections").add(COLLECTION);
-                    ArrayNode permissions = input.putArray("permissions");
+                    input.put("hello", "world");
+                    ObjectNode metadata = objectMapper.createObjectNode();
+                    metadata.put("uri", UUID.randomUUID() + ".json");
+                    metadata.putArray("collections").add(COLLECTION);
+                    ArrayNode permissions = metadata.putArray("permissions");
                     permissions.addObject().put("roleName", "rest-reader").put("capability", "read");
                     permissions.addObject().put("roleName", "rest-reader").put("capability", "update");
+                    bulkInputCaller.accept(metadata);
                     bulkInputCaller.accept(input);
                 }
             }
@@ -325,4 +314,46 @@ public class PerformanceTester {
             System.out.println(connectionType + ": " + (total / iterations));
         });
     }
+
+    private static final String SIMPLE_BULK_API = "{\n" +
+            "  \"endpoint\": \"/writeDocuments.sjs\",\n" +
+            "  \"params\": [\n" +
+            "    {\n" +
+            "      \"name\": \"endpointConstants\",\n" +
+            "      \"datatype\": \"jsonDocument\",\n" +
+            "      \"multiple\": false,\n" +
+            "      \"nullable\": true\n" +
+            "    },\n" +
+            "    {\n" +
+            "      \"name\": \"input\",\n" +
+            "      \"datatype\": \"jsonDocument\",\n" +
+            "      \"multiple\": true,\n" +
+            "      \"nullable\": true\n" +
+            "    }\n" +
+            "  ],\n" +
+            "  \"$bulk\": {\n" +
+            "    \"inputBatchSize\": 100\n" +
+            "  }\n" +
+            "}";
+
+    private static final String COMPLEX_BULK_API = "{\n" +
+            "  \"endpoint\": \"/writeDocuments.sjs\",\n" +
+            "  \"params\": [\n" +
+            "    {\n" +
+            "      \"name\": \"endpointConstants\",\n" +
+            "      \"datatype\": \"jsonDocument\",\n" +
+            "      \"multiple\": false,\n" +
+            "      \"nullable\": true\n" +
+            "    },\n" +
+            "    {\n" +
+            "      \"name\": \"input\",\n" +
+            "      \"datatype\": \"jsonDocument\",\n" +
+            "      \"multiple\": true,\n" +
+            "      \"nullable\": true\n" +
+            "    }\n" +
+            "  ],\n" +
+            "  \"$bulk\": {\n" +
+            "    \"inputBatchSize\": 200\n" +
+            "  }\n" +
+            "}";
 }
