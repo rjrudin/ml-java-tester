@@ -39,6 +39,10 @@ task testPerformance(type: JavaExec) {
             "batchCount=" + batchCount,
             "batchSize=" + batchSize,
             "iterations=" + iterations,
-            "threadCount=" + threadCount
+            "threadCount=" + threadCount,
+            "simpleBulkService=" + simpleBulkService,
+            "testXcc=" + testXcc,
+            "testDmsdk=" + testDmsdk,
+            "testBulk=" + testBulk
     ]
 }

@@ -2,6 +2,12 @@
   "endpoint": "/writeDocuments.sjs",
   "params": [
     {
+      "name": "endpointConstants",
+      "datatype": "jsonDocument",
+      "multiple": false,
+      "nullable": true
+    },
+    {
       "name": "input",
       "datatype": "jsonDocument",
       "multiple": true,

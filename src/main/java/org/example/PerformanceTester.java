@@ -33,6 +33,9 @@ public class PerformanceTester {
     private final static Logger logger = LoggerFactory.getLogger(PerformanceTester.class);
 
     // Initial default values; override these args
+    private static boolean testXcc = true;
+    private static boolean testDmsdk = true;
+    private static boolean testBulk = true;
     private static int batchCount = 100;
     private static int batchSize = 100;
     private static int iterations = 3;
@@ -42,6 +45,7 @@ public class PerformanceTester {
     private static int xdbcPort = 8004;
     private static String username = "admin";
     private static String password = "admin";
+    private static boolean simpleBulkService = true;
 
     private static final String COLLECTION = "data";
 
@@ -79,9 +83,15 @@ public class PerformanceTester {
         databaseClient = DatabaseClientFactory.newClient(host, restPort, new DatabaseClientFactory.DigestAuthContext(username, password));
 
         for (int i = 1; i <= iterations; i++) {
-            testXcc();
-            testWriteBatcher();
-            testBulkInputCaller();
+            if (testXcc) {
+                testXcc();
+            }
+            if (testDmsdk) {
+                testWriteBatcher();
+            }
+            if (testBulk) {
+                testBulkInputCaller();
+            }
         }
 
         printDurations();
@@ -237,24 +247,34 @@ public class PerformanceTester {
             throw new RuntimeException(ex);
         }
 
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        JacksonHandle endpointConstants = new JacksonHandle(
+                objectMapper.createObjectNode().put("simpleBulkService", simpleBulkService)
+        );
+
         IOEndpoint.CallContext[] callContexts = new IOEndpoint.CallContext[threadCount];
         for (int i = 0; i < threadCount; i++) {
-            callContexts[i] = inputCaller.newCallContext();
+            callContexts[i] = inputCaller.newCallContext().withEndpointConstants(endpointConstants);
         }
         InputCaller.BulkInputCaller<JsonNode> bulkInputCaller = inputCaller.bulkCaller(callContexts, threadCount);
 
-        ObjectMapper objectMapper = new ObjectMapper();
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
                 ObjectNode input = objectMapper.createObjectNode();
-                input.putObject("content").put("hello", "world");
-                input.put("uri", UUID.randomUUID() + ".json");
-                input.putArray("collections").add(COLLECTION);
-                ArrayNode permissions = input.putArray("permissions");
-                permissions.addObject().put("roleName", "rest-reader").put("capability", "read");
-                permissions.addObject().put("roleName", "rest-reader").put("capability", "update");
-                bulkInputCaller.accept(input);
+                if (simpleBulkService) {
+                    input.put("hello", "world");
+                    bulkInputCaller.accept(input);
+                } else {
+                    input.putObject("content").put("hello", "world");
+                    input.put("uri", UUID.randomUUID() + ".json");
+                    input.putArray("collections").add(COLLECTION);
+                    ArrayNode permissions = input.putArray("permissions");
+                    permissions.addObject().put("roleName", "rest-reader").put("capability", "read");
+                    permissions.addObject().put("roleName", "rest-reader").put("capability", "update");
+                    bulkInputCaller.accept(input);
+                }
             }
         }
 
