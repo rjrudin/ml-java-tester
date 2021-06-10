@@ -43,6 +43,7 @@ task testPerformance(type: JavaExec) {
             "simpleBulkService=" + simpleBulkService,
             "testXcc=" + testXcc,
             "testDmsdk=" + testDmsdk,
-            "testBulk=" + testBulk
+            "testBulk=" + testBulk,
+            "documentElements=" + documentElements
     ]
 }

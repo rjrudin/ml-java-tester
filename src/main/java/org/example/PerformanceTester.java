@@ -43,6 +43,7 @@ public class PerformanceTester {
     private static int batchSize = 100;
     private static int iterations = 5;
     private static int threadCount = 32;
+    private static int documentElements = 10;
 
     private static String host = "localhost";
     private static int restPort = 8003;
@@ -54,6 +55,7 @@ public class PerformanceTester {
 
     private static DatabaseClient databaseClient;
     private static ContentSource contentSource;
+    private static ObjectMapper objectMapper = new ObjectMapper();
 
     private static Map<String, List<Long>> durationsMap = new LinkedHashMap();
 
@@ -121,6 +123,9 @@ public class PerformanceTester {
                     case "iterations":
                         iterations = Integer.parseInt(tokens[1]);
                         break;
+                    case "documentElements":
+                        documentElements = Integer.parseInt(tokens[1]);
+                        break;
                     case "simpleBulkService":
                         simpleBulkService = Boolean.parseBoolean(tokens[1]);
                         break;
@@ -163,7 +168,7 @@ public class PerformanceTester {
             Content[] contentArray = new Content[batchSize];
             for (int j = 0; j < batchSize; j++) {
                 String uuid = UUID.randomUUID().toString();
-                contentArray[j] = ContentFactory.newContent(uuid + ".xml", "<hello>world</hello>", options);
+                contentArray[j] = ContentFactory.newContent(uuid + ".xml", buildXmlDocument(), options);
             }
             executorService.execute(() -> {
                 // XCC docs state that Session is not thread-safe and also not to bother with pooling Session objects
@@ -209,7 +214,6 @@ public class PerformanceTester {
                 .withThreadCount(threadCount)
                 .withBatchSize(batchSize);
 
-        ObjectMapper objectMapper = new ObjectMapper();
         DocumentMetadataHandle metadata = new DocumentMetadataHandle()
                 .withCollections(COLLECTION, COLLECTION + "2")
                 .withPermission("rest-reader", DocumentMetadataHandle.Capability.READ, DocumentMetadataHandle.Capability.UPDATE);
@@ -217,9 +221,10 @@ public class PerformanceTester {
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
-                ObjectNode content = objectMapper.createObjectNode().put("hello", "world");
-                writeBatcher.add(new DocumentWriteOperationImpl(DocumentWriteOperation.OperationType.DOCUMENT_WRITE,
-                        UUID.randomUUID() + ".json", metadata, new JacksonHandle(content)));
+                writeBatcher.add(new DocumentWriteOperationImpl(
+                        DocumentWriteOperation.OperationType.DOCUMENT_WRITE,
+                        UUID.randomUUID() + ".json", metadata,
+                        new JacksonHandle(buildJsonDocument())));
             }
         }
         writeBatcher.flushAndWait();
@@ -234,7 +239,6 @@ public class PerformanceTester {
     private static void testBulkInputCaller() {
         deleteData();
 
-        ObjectMapper objectMapper = new ObjectMapper();
         InputCaller<JsonNode> inputCaller;
 
 //        JacksonHandle apiHandle = databaseClient.newServerEval()
@@ -261,12 +265,9 @@ public class PerformanceTester {
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
-                ObjectNode input = objectMapper.createObjectNode();
                 if (simpleBulkService) {
-                    input.put("hello", "world");
-                    bulkInputCaller.accept(input);
+                    bulkInputCaller.accept(buildJsonDocument());
                 } else {
-                    input.put("hello", "world");
                     ObjectNode metadata = objectMapper.createObjectNode();
                     metadata.put("uri", UUID.randomUUID() + ".json");
                     metadata.putArray("collections").add(COLLECTION);
@@ -274,7 +275,7 @@ public class PerformanceTester {
                     permissions.addObject().put("roleName", "rest-reader").put("capability", "read");
                     permissions.addObject().put("roleName", "rest-reader").put("capability", "update");
                     bulkInputCaller.accept(metadata);
-                    bulkInputCaller.accept(input);
+                    bulkInputCaller.accept(buildJsonDocument());
                 }
             }
         }
@@ -313,6 +314,23 @@ public class PerformanceTester {
             long total = durations.stream().reduce((value, accumulator) -> value + accumulator.longValue()).get();
             System.out.println(connectionType + ": " + (total / iterations));
         });
+    }
+
+    private static String buildXmlDocument() {
+        StringBuilder xml = new StringBuilder("<root>");
+        for (int i = 1; i <= documentElements; i++) {
+            String name = String.format("element-%d", i);
+            xml.append(String.format("<%s>test</%s>", name, name));
+        }
+        return xml.append("</root>").toString();
+    }
+
+    private static ObjectNode buildJsonDocument() {
+        ObjectNode doc = objectMapper.createObjectNode();
+        for (int i = 1; i <= documentElements; i++) {
+            doc.put(String.format("property-%d", i), "test");
+        }
+        return doc;
     }
 
     private static final String SIMPLE_BULK_API = "{\n" +
