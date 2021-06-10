@@ -320,7 +320,7 @@ public class PerformanceTester {
         StringBuilder xml = new StringBuilder("<root>");
         for (int i = 1; i <= documentElements; i++) {
             String name = String.format("element-%d", i);
-            xml.append(String.format("<%s>test</%s>", name, name));
+            xml.append(String.format("<%s>test-%d</%s>", name, i, name));
         }
         return xml.append("</root>").toString();
     }
@@ -328,7 +328,7 @@ public class PerformanceTester {
     private static ObjectNode buildJsonDocument() {
         ObjectNode doc = objectMapper.createObjectNode();
         for (int i = 1; i <= documentElements; i++) {
-            doc.put(String.format("property-%d", i), "test");
+            doc.put(String.format("property-%d", i), String.format("test-%d", i));
         }
         return doc;
     }
