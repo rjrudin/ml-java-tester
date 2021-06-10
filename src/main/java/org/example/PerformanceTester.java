@@ -134,6 +134,18 @@ public class PerformanceTester {
                     case "iterations":
                         iterations = Integer.parseInt(tokens[1]);
                         break;
+                    case "simpleBulkService":
+                        simpleBulkService = Boolean.parseBoolean(tokens[1]);
+                        break;
+                    case "testXcc":
+                        testXcc = Boolean.parseBoolean(tokens[1]);
+                        break;
+                    case "testDmsdk":
+                        testDmsdk = Boolean.parseBoolean(tokens[1]);
+                        break;
+                    case "testBulk":
+                        testBulk = Boolean.parseBoolean(tokens[1]);
+                        break;
                 }
             }
         }
