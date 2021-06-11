@@ -15,6 +15,9 @@ import com.marklogic.client.impl.DocumentWriteOperationImpl;
 import com.marklogic.client.io.DocumentMetadataHandle;
 import com.marklogic.client.io.JacksonHandle;
 import com.marklogic.client.io.StringHandle;
+import com.marklogic.mgmt.ManageClient;
+import com.marklogic.mgmt.ManageConfig;
+import com.marklogic.mgmt.resource.hosts.HostManager;
 import com.marklogic.xcc.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +57,8 @@ public class PerformanceTester {
     private static final String COLLECTION = "data";
 
     private static DatabaseClient databaseClient;
+    private static List<DatabaseClient> allDatabaseClients;
+
     private static ContentSource contentSource;
     private static ObjectMapper objectMapper = new ObjectMapper();
 
@@ -70,6 +75,17 @@ public class PerformanceTester {
 
         contentSource = ContentSourceFactory.newContentSource(host, xdbcPort, username, password.toCharArray());
         databaseClient = DatabaseClientFactory.newClient(host, restPort, new DatabaseClientFactory.DigestAuthContext(username, password));
+
+        allDatabaseClients = new ArrayList<>();
+        List<String> hostNames = new HostManager(new ManageClient(new ManageConfig(host, 8002, username, password))).getHostNames();
+        if (hostNames.size() > 1) {
+            logger.info("For Bulk test: multiple hosts detected, will connect to: " + hostNames);
+            hostNames.forEach(hostName -> allDatabaseClients.add(
+                    DatabaseClientFactory.newClient(hostName, restPort, new DatabaseClientFactory.DigestAuthContext(username, password)))
+            );
+        } else {
+            allDatabaseClients.add(databaseClient);
+        }
 
         for (int i = 1; i <= iterations; i++) {
             if (testXcc) {
@@ -245,28 +261,7 @@ public class PerformanceTester {
     private static void testBulkInputCaller() {
         deleteData();
 
-        InputCaller<JsonNode> inputCaller;
-
-//        JacksonHandle apiHandle = databaseClient.newServerEval()
-//                .javascript("xdmp.eval('cts.doc(\"/writeDocuments.api\")', {}, {database: xdmp.database('java-tester-modules')})")
-//                .eval(new JacksonHandle());
-//
-        try {
-            StringHandle apiHandle = simpleBulkService ? new StringHandle(SIMPLE_BULK_API) : new StringHandle(COMPLEX_BULK_API);
-            inputCaller = InputCaller.on(databaseClient, apiHandle, new JacksonHandle());
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
-        }
-
-        JacksonHandle endpointConstants = new JacksonHandle(
-                objectMapper.createObjectNode().put("simpleBulkService", simpleBulkService)
-        );
-
-        IOEndpoint.CallContext[] callContexts = new IOEndpoint.CallContext[threadCount];
-        for (int i = 0; i < threadCount; i++) {
-            callContexts[i] = inputCaller.newCallContext().withEndpointConstants(endpointConstants);
-        }
-        InputCaller.BulkInputCaller<JsonNode> bulkInputCaller = inputCaller.bulkCaller(callContexts, threadCount);
+        List<InputCaller.BulkInputCaller<JsonNode>> bulkInputCallers = buildBulkInputCallers();
 
         // The same data is inserted so we don't spend a bunch of time creating Java objects, which muddies the water
         // when testing performance
@@ -277,9 +272,17 @@ public class PerformanceTester {
         permissions.addObject().put("roleName", "rest-reader").put("capability", "read");
         permissions.addObject().put("roleName", "rest-reader").put("capability", "update");
 
+        int clientCounter = 0;
+
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
+                InputCaller.BulkInputCaller<JsonNode> bulkInputCaller = bulkInputCallers.get(clientCounter);
+                clientCounter++;
+                if (clientCounter >= bulkInputCallers.size()) {
+                    clientCounter = 0;
+                }
+
                 if (!simpleBulkService) {
                     bulkInputCaller.accept(metadata);
                 }
@@ -287,8 +290,32 @@ public class PerformanceTester {
             }
         }
 
-        bulkInputCaller.awaitCompletion();
+        bulkInputCallers.forEach(caller -> caller.awaitCompletion());
+
         addDuration("Bulk", System.currentTimeMillis() - start);
+    }
+
+    private static List<InputCaller.BulkInputCaller<JsonNode>> buildBulkInputCallers() {
+        final StringHandle apiHandle = simpleBulkService ? new StringHandle(SIMPLE_BULK_API) : new StringHandle(COMPLEX_BULK_API);
+        final JacksonHandle endpointConstants = new JacksonHandle(objectMapper.createObjectNode().put("simpleBulkService", simpleBulkService));
+
+        List<InputCaller.BulkInputCaller<JsonNode>> callers = new ArrayList<>();
+
+        allDatabaseClients.forEach(client -> {
+            InputCaller<JsonNode> inputCaller;
+            try {
+                inputCaller = InputCaller.on(client, apiHandle, new JacksonHandle());
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
+            IOEndpoint.CallContext[] callContexts = new IOEndpoint.CallContext[threadCount];
+            for (int i = 0; i < threadCount; i++) {
+                callContexts[i] = inputCaller.newCallContext().withEndpointConstants(endpointConstants);
+            }
+            callers.add(inputCaller.bulkCaller(callContexts, threadCount));
+        });
+
+        return callers;
     }
 
     /**

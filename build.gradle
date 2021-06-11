@@ -9,6 +9,9 @@ targetCompatibility = "8"
 
 repositories {
     mavenCentral()
+
+    // Needed for ml-app-deployer
+    jcenter()
 }
 
 dependencies {
@@ -21,6 +24,11 @@ dependencies {
 
     implementation 'com.marklogic:marklogic-xcc:10.0.6.2'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.11.1'
+
+    // Needed for finding host names in the cluster
+    implementation ('com.marklogic:ml-app-deployer:4.1.1') {
+        exclude module: "marklogic-client-api"
+    }
 
     implementation 'ch.qos.logback:logback-classic:1.2.3'
     implementation 'org.slf4j:jcl-over-slf4j:1.7.30'
