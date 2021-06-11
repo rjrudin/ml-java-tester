@@ -10,13 +10,13 @@ import com.marklogic.client.datamovement.WriteBatcher;
 import com.marklogic.client.dataservices.IOEndpoint;
 import com.marklogic.client.dataservices.InputCaller;
 import com.marklogic.client.document.DocumentWriteOperation;
+import com.marklogic.client.ext.datamovement.job.DeleteCollectionsJob;
 import com.marklogic.client.impl.DocumentWriteOperationImpl;
 import com.marklogic.client.io.DocumentMetadataHandle;
 import com.marklogic.client.io.JacksonHandle;
 import com.marklogic.client.io.StringHandle;
 import com.marklogic.mgmt.ManageClient;
 import com.marklogic.mgmt.ManageConfig;
-import com.marklogic.mgmt.resource.databases.DatabaseManager;
 import com.marklogic.mgmt.resource.hosts.HostManager;
 import com.marklogic.xcc.*;
 import org.slf4j.Logger;
@@ -35,8 +35,8 @@ public class PerformanceTester {
     private final static Logger logger = LoggerFactory.getLogger(PerformanceTester.class);
 
     // Initial default values; override these args
-    private static boolean testXcc = false;
-    private static boolean testDmsdk = false;
+    private static boolean testXcc = true;
+    private static boolean testDmsdk = true;
     private static boolean testBulk = true;
     private static boolean simpleBulkService = true;
 
@@ -51,7 +51,6 @@ public class PerformanceTester {
     private static int xdbcPort = 8004;
     private static String username = "admin";
     private static String password = "admin";
-    private static String database = "java-tester-content";
 
     private static final String COLLECTION = "data";
 
@@ -89,6 +88,8 @@ public class PerformanceTester {
             allDatabaseClients.add(databaseClient);
             contentSources.add(ContentSourceFactory.newContentSource(host, xdbcPort, username, password.toCharArray()));
         }
+
+        deleteCollection();
 
         for (int i = 1; i <= iterations; i++) {
             if (testXcc) {
@@ -165,15 +166,15 @@ public class PerformanceTester {
     /**
      * Before a test is run, delete any documents in the collection that documents will be written to.
      */
-    private static void deleteData() {
-        new DatabaseManager(manageClient).clearDatabase(database);
+    private static void deleteCollection() {
+        new DeleteCollectionsJob(COLLECTION).run(databaseClient);
     }
 
     /**
      * Uses a Java ExecutorService to support multi-threading in a fashion similar to that of DMSDK and the Bulk API.
      */
     private static void testXcc() {
-        deleteData();
+        deleteCollection();
 
         ExecutorService executorService = Executors.newFixedThreadPool(threadCount * contentSources.size());
 
@@ -238,7 +239,7 @@ public class PerformanceTester {
      * Tests performance of writing data via a vanilla WriteBatcher.
      */
     private static void testWriteBatcher() {
-        deleteData();
+        deleteCollection();
 
         DataMovementManager dataMovementManager = databaseClient.newDataMovementManager();
         WriteBatcher writeBatcher = dataMovementManager.newWriteBatcher()
@@ -272,7 +273,7 @@ public class PerformanceTester {
      * Tests performance of writing data via a vanilla BulkInputCaller.
      */
     private static void testBulkInputCaller() {
-        deleteData();
+        deleteCollection();
 
         List<InputCaller.BulkInputCaller> bulkInputCallers = buildBulkInputCallers();
 

@@ -30,6 +30,11 @@ dependencies {
         exclude module: "marklogic-client-api"
     }
 
+    // Needed to delete large collections
+    implementation ('com.marklogic:marklogic-data-movement-components:2.2.1') {
+        exclude module: "marklogic-client-api"
+    }
+
     implementation 'ch.qos.logback:logback-classic:1.2.3'
     implementation 'org.slf4j:jcl-over-slf4j:1.7.30'
     implementation 'org.slf4j:slf4j-api:1.7.30'
