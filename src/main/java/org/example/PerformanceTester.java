@@ -57,9 +57,9 @@ public class PerformanceTester {
     private static final String COLLECTION = "data";
 
     private static DatabaseClient databaseClient;
-    private static List<DatabaseClient> allDatabaseClients;
+    private static List<DatabaseClient> allDatabaseClients = new ArrayList<>();
+    private static List<ContentSource> contentSources = new ArrayList<>();
 
-    private static ContentSource contentSource;
     private static ObjectMapper objectMapper = new ObjectMapper();
 
     private static Map<String, List<Long>> durationsMap = new LinkedHashMap();
@@ -73,18 +73,19 @@ public class PerformanceTester {
         logger.info("Thread count: " + threadCount);
         logger.info("Iterations: " + iterations);
 
-        contentSource = ContentSourceFactory.newContentSource(host, xdbcPort, username, password.toCharArray());
+        // Used by the DMSDK approach, for deleting data, and by the Bulk approach when there's only one host to connect to
         databaseClient = DatabaseClientFactory.newClient(host, restPort, new DatabaseClientFactory.DigestAuthContext(username, password));
 
-        allDatabaseClients = new ArrayList<>();
         List<String> hostNames = new HostManager(new ManageClient(new ManageConfig(host, 8002, username, password))).getHostNames();
         if (hostNames.size() > 1) {
-            logger.info("For Bulk test: multiple hosts detected, will connect to: " + hostNames);
-            hostNames.forEach(hostName -> allDatabaseClients.add(
-                    DatabaseClientFactory.newClient(hostName, restPort, new DatabaseClientFactory.DigestAuthContext(username, password)))
-            );
+            logger.info("For Bulk and XCC tests: multiple hosts detected, will connect to: " + hostNames);
+            hostNames.forEach(hostName -> {
+                allDatabaseClients.add(DatabaseClientFactory.newClient(hostName, restPort, new DatabaseClientFactory.DigestAuthContext(username, password)));
+                contentSources.add(ContentSourceFactory.newContentSource(hostName, xdbcPort, username, password.toCharArray()));
+            });
         } else {
             allDatabaseClients.add(databaseClient);
+            contentSources.add(ContentSourceFactory.newContentSource(host, xdbcPort, username, password.toCharArray()));
         }
 
         for (int i = 1; i <= iterations; i++) {
@@ -182,6 +183,8 @@ public class PerformanceTester {
         options.setCollections(new String[]{COLLECTION});
         final String xmlDocument = buildXmlDocument();
 
+        int contentSourceCounter = 0;
+
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             Content[] contentArray = new Content[batchSize];
@@ -189,6 +192,13 @@ public class PerformanceTester {
                 String uuid = UUID.randomUUID().toString();
                 contentArray[j] = ContentFactory.newContent(uuid + ".xml", xmlDocument, options);
             }
+
+            ContentSource contentSource = contentSources.get(contentSourceCounter);
+            contentSourceCounter++;
+            if (contentSourceCounter >= contentSources.size()) {
+                contentSourceCounter = 0;
+            }
+
             executorService.execute(() -> {
                 // XCC docs state that Session is not thread-safe and also not to bother with pooling Session objects
                 // because they are so cheap to create - https://docs.marklogic.com/guide/xcc/concepts#id_55196
