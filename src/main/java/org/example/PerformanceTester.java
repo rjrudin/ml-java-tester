@@ -359,14 +359,10 @@ public class PerformanceTester {
 
         System.out.println("All durations for document count: " + documentCount);
         durationsMap.forEach((connectionType, durations) -> {
-            // Ignore first duration, which is frequently much larger for all 3 approaches
-            if (durations.size() > 1) {
-                durations = durations.subList(1, durations.size());
-            }
             System.out.println(connectionType + ": " + durations);
         });
 
-        System.out.println("Average durations for document count: " + documentCount);
+        System.out.println("Average durations (ignoring the first one) for document count: " + documentCount);
         durationsMap.forEach((connectionType, durations) -> {
             // Ignore first duration, which is frequently much larger for all 3 approaches
             if (durations.size() > 1) {
