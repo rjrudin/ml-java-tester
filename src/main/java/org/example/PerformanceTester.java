@@ -1,6 +1,5 @@
 package org.example;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,6 +16,7 @@ import com.marklogic.client.io.JacksonHandle;
 import com.marklogic.client.io.StringHandle;
 import com.marklogic.mgmt.ManageClient;
 import com.marklogic.mgmt.ManageConfig;
+import com.marklogic.mgmt.resource.databases.DatabaseManager;
 import com.marklogic.mgmt.resource.hosts.HostManager;
 import com.marklogic.xcc.*;
 import org.slf4j.Logger;
@@ -35,14 +35,14 @@ public class PerformanceTester {
     private final static Logger logger = LoggerFactory.getLogger(PerformanceTester.class);
 
     // Initial default values; override these args
-    private static boolean testXcc = true;
-    private static boolean testDmsdk = true;
+    private static boolean testXcc = false;
+    private static boolean testDmsdk = false;
     private static boolean testBulk = true;
     private static boolean simpleBulkService = true;
 
-    private static int batchCount = 100;
+    private static int batchCount = 10;
     private static int batchSize = 100;
-    private static int iterations = 5;
+    private static int iterations = 1;
     private static int threadCount = 24;
     private static int documentElements = 10;
 
@@ -51,9 +51,11 @@ public class PerformanceTester {
     private static int xdbcPort = 8004;
     private static String username = "admin";
     private static String password = "admin";
+    private static String database = "java-tester-content";
 
     private static final String COLLECTION = "data";
 
+    private static ManageClient manageClient;
     private static DatabaseClient databaseClient;
     private static List<DatabaseClient> allDatabaseClients = new ArrayList<>();
     private static List<ContentSource> contentSources = new ArrayList<>();
@@ -74,7 +76,9 @@ public class PerformanceTester {
         // Used by the DMSDK approach, for deleting data, and by the Bulk approach when there's only one host to connect to
         databaseClient = DatabaseClientFactory.newClient(host, restPort, new DatabaseClientFactory.DigestAuthContext(username, password));
 
-        List<String> hostNames = new HostManager(new ManageClient(new ManageConfig(host, 8002, username, password))).getHostNames();
+        manageClient = new ManageClient(new ManageConfig(host, 8002, username, password));
+
+        List<String> hostNames = new HostManager(manageClient).getHostNames();
         if (hostNames.size() > 1) {
             logger.info("For Bulk and XCC tests: multiple hosts detected, will connect to: " + hostNames);
             hostNames.forEach(hostName -> {
@@ -162,8 +166,7 @@ public class PerformanceTester {
      * Before a test is run, delete any documents in the collection that documents will be written to.
      */
     private static void deleteData() {
-        //logger.info(String.format("Deleting documents in collection '%s'", COLLECTION));
-        databaseClient.newServerEval().xquery(String.format("xdmp:collection-delete('%s')", COLLECTION)).evalAs(String.class);
+        new DatabaseManager(manageClient).clearDatabase(database);
     }
 
     /**
@@ -271,7 +274,7 @@ public class PerformanceTester {
     private static void testBulkInputCaller() {
         deleteData();
 
-        List<InputCaller.BulkInputCaller<JsonNode>> bulkInputCallers = buildBulkInputCallers();
+        List<InputCaller.BulkInputCaller> bulkInputCallers = buildBulkInputCallers();
 
         // The same data is inserted so we don't spend a bunch of time creating Java objects, which muddies the water
         // when testing performance
@@ -288,7 +291,7 @@ public class PerformanceTester {
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
-                InputCaller.BulkInputCaller<JsonNode> bulkInputCaller = bulkInputCallers.get(clientCounter);
+                InputCaller.BulkInputCaller bulkInputCaller = bulkInputCallers.get(clientCounter);
                 clientCounter++;
                 if (clientCounter >= bulkInputCallers.size()) {
                     clientCounter = 0;
@@ -306,14 +309,14 @@ public class PerformanceTester {
         addDuration("Bulk", System.currentTimeMillis() - start);
     }
 
-    private static List<InputCaller.BulkInputCaller<JsonNode>> buildBulkInputCallers() {
+    private static List<InputCaller.BulkInputCaller> buildBulkInputCallers() {
         final StringHandle apiHandle = simpleBulkService ? new StringHandle(SIMPLE_BULK_API) : new StringHandle(COMPLEX_BULK_API);
         final JacksonHandle endpointConstants = new JacksonHandle(objectMapper.createObjectNode().put("simpleBulkService", simpleBulkService));
 
-        List<InputCaller.BulkInputCaller<JsonNode>> callers = new ArrayList<>();
+        List<InputCaller.BulkInputCaller> callers = new ArrayList<>();
 
         allDatabaseClients.forEach(client -> {
-            InputCaller<JsonNode> inputCaller;
+            InputCaller inputCaller;
             try {
                 inputCaller = InputCaller.on(client, apiHandle, new JacksonHandle());
             } catch (Exception ex) {
