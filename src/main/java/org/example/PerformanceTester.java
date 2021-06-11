@@ -45,7 +45,7 @@ public class PerformanceTester {
     private static int batchCount = 100;
     private static int batchSize = 100;
     private static int iterations = 5;
-    private static int threadCount = 32;
+    private static int threadCount = 30;
     private static int documentElements = 10;
 
     private static String host = "localhost";
@@ -318,11 +318,20 @@ public class PerformanceTester {
             } catch (Exception ex) {
                 throw new RuntimeException(ex);
             }
-            IOEndpoint.CallContext[] callContexts = new IOEndpoint.CallContext[threadCount];
-            for (int i = 0; i < threadCount; i++) {
+
+            // Split up the threadCount for each database client, as each BulkInputCaller has its own thread pool
+            int callerThreadCount = threadCount / allDatabaseClients.size();
+            if (threadCount % allDatabaseClients.size() > 0) {
+                // If it doesn't divide evenly, just increment the count so that Bulk doesn't end up using fewer threads,
+                // though it might use one or two more
+                callerThreadCount++;
+            }
+
+            IOEndpoint.CallContext[] callContexts = new IOEndpoint.CallContext[callerThreadCount];
+            for (int i = 0; i < callerThreadCount; i++) {
                 callContexts[i] = inputCaller.newCallContext().withEndpointConstants(endpointConstants);
             }
-            callers.add(inputCaller.bulkCaller(callContexts, threadCount));
+            callers.add(inputCaller.bulkCaller(callContexts, callerThreadCount));
         });
 
         return callers;
