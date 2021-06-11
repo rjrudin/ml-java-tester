@@ -167,7 +167,9 @@ public class PerformanceTester {
      * Before a test is run, delete any documents in the collection that documents will be written to.
      */
     private static void deleteCollection() {
-        new DeleteCollectionsJob(COLLECTION).run(databaseClient);
+        DeleteCollectionsJob job = new DeleteCollectionsJob(COLLECTION);
+        job.setThreadCount(32);
+        job.run(databaseClient);
     }
 
     /**
