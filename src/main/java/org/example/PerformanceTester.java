@@ -28,9 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Each test method in this class follows an approach of first creating all of the objects to be written to ML, and then
- * writing all of those objects. Only the second part is timed for performance; this ensures that any time spent
- * creating objects via Java code doesn't count against the performance of actually writing the objects to ML.
+ * Runs performance tests for XCC, DMSDK, and Bulk that all involve writing docs to ML.
  */
 public class PerformanceTester {
 
@@ -45,7 +43,7 @@ public class PerformanceTester {
     private static int batchCount = 100;
     private static int batchSize = 100;
     private static int iterations = 5;
-    private static int threadCount = 30;
+    private static int threadCount = 24;
     private static int documentElements = 10;
 
     private static String host = "localhost";
@@ -174,7 +172,7 @@ public class PerformanceTester {
     private static void testXcc() {
         deleteData();
 
-        ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+        ExecutorService executorService = Executors.newFixedThreadPool(threadCount * contentSources.size());
 
         // The same data is inserted so we don't spend a bunch of time creating Java objects, which muddies the water
         // when testing performance
@@ -185,6 +183,7 @@ public class PerformanceTester {
 
         int contentSourceCounter = 0;
 
+        logger.info("Starting XCC test");
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             Content[] contentArray = new Content[batchSize];
@@ -240,7 +239,7 @@ public class PerformanceTester {
 
         DataMovementManager dataMovementManager = databaseClient.newDataMovementManager();
         WriteBatcher writeBatcher = dataMovementManager.newWriteBatcher()
-                .withThreadCount(threadCount)
+                .withThreadCount(threadCount * allDatabaseClients.size())
                 .withBatchSize(batchSize);
 
         // The same data is inserted so we don't spend a bunch of time creating Java objects, which muddies the water
@@ -250,6 +249,7 @@ public class PerformanceTester {
                 .withPermission("rest-reader", DocumentMetadataHandle.Capability.READ, DocumentMetadataHandle.Capability.UPDATE);
         final ObjectNode jsonDoc = buildJsonDocument();
 
+        logger.info("Starting DMSDK test");
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
@@ -284,6 +284,7 @@ public class PerformanceTester {
 
         int clientCounter = 0;
 
+        logger.info("Starting Bulk test");
         long start = System.currentTimeMillis();
         for (int i = 0; i < batchCount; i++) {
             for (int j = 0; j < batchSize; j++) {
@@ -319,19 +320,11 @@ public class PerformanceTester {
                 throw new RuntimeException(ex);
             }
 
-            // Split up the threadCount for each database client, as each BulkInputCaller has its own thread pool
-            int callerThreadCount = threadCount / allDatabaseClients.size();
-            if (threadCount % allDatabaseClients.size() > 0) {
-                // If it doesn't divide evenly, just increment the count so that Bulk doesn't end up using fewer threads,
-                // though it might use one or two more
-                callerThreadCount++;
-            }
-
-            IOEndpoint.CallContext[] callContexts = new IOEndpoint.CallContext[callerThreadCount];
-            for (int i = 0; i < callerThreadCount; i++) {
+            IOEndpoint.CallContext[] callContexts = new IOEndpoint.CallContext[threadCount];
+            for (int i = 0; i < threadCount; i++) {
                 callContexts[i] = inputCaller.newCallContext().withEndpointConstants(endpointConstants);
             }
-            callers.add(inputCaller.bulkCaller(callContexts, callerThreadCount));
+            callers.add(inputCaller.bulkCaller(callContexts, threadCount));
         });
 
         return callers;
@@ -369,7 +362,8 @@ public class PerformanceTester {
                 durations = durations.subList(1, durations.size());
             }
             long total = durations.stream().reduce((value, accumulator) -> value + accumulator.longValue()).get();
-            System.out.println(connectionType + ": " + (total / iterations));
+            int denominator = iterations > 1 ? iterations - 1 : iterations;
+            System.out.println(connectionType + ": " + (total / denominator));
         });
     }
 
