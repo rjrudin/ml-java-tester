@@ -92,14 +92,24 @@ public class PerformanceTester {
         deleteCollection();
 
         for (int i = 1; i <= iterations; i++) {
-            if (testXcc) {
-                testXcc();
+            int configuredBatchCount = batchCount;
+            if (i == 1 && iterations > 1) {
+                // Use a small number of batches on the first iteration, since it will be ignored in the average since
+                // it is regularly higher than the other iterations for all 3 approaches.
+                batchCount = 100;
             }
-            if (testDmsdk) {
-                testWriteBatcher();
-            }
-            if (testBulk) {
-                testBulkInputCaller();
+            try {
+                if (testXcc) {
+                    testXcc();
+                }
+                if (testDmsdk) {
+                    testWriteBatcher();
+                }
+                if (testBulk) {
+                    testBulkInputCaller();
+                }
+            } finally {
+                batchCount = configuredBatchCount;
             }
         }
 
