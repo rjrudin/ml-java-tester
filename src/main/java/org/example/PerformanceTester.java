@@ -66,6 +66,7 @@ public class PerformanceTester {
     public static void main(String[] args) {
         applyArgs(args);
 
+        logger.info("Max JVM memory: " + Runtime.getRuntime().maxMemory());
         logger.info(String.format("Connecting to '%s' as user '%s'", host, username));
         logger.info("Batch count: " + batchCount);
         logger.info("Batch size: " + batchSize);

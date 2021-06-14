@@ -59,4 +59,5 @@ task testPerformance(type: JavaExec) {
             "testBulk=" + testBulk,
             "documentElements=" + documentElements
     ]
+    maxHeapSize = project.property("maxHeapSize")
 }
