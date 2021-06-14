@@ -10,13 +10,13 @@ import com.marklogic.client.datamovement.WriteBatcher;
 import com.marklogic.client.dataservices.IOEndpoint;
 import com.marklogic.client.dataservices.InputCaller;
 import com.marklogic.client.document.DocumentWriteOperation;
-import com.marklogic.client.ext.datamovement.job.DeleteCollectionsJob;
 import com.marklogic.client.impl.DocumentWriteOperationImpl;
 import com.marklogic.client.io.DocumentMetadataHandle;
 import com.marklogic.client.io.JacksonHandle;
 import com.marklogic.client.io.StringHandle;
 import com.marklogic.mgmt.ManageClient;
 import com.marklogic.mgmt.ManageConfig;
+import com.marklogic.mgmt.resource.databases.DatabaseManager;
 import com.marklogic.mgmt.resource.hosts.HostManager;
 import com.marklogic.xcc.*;
 import org.slf4j.Logger;
@@ -96,6 +96,8 @@ public class PerformanceTester {
             if (i == 1 && iterations > 1) {
                 // Use a small number of batches on the first iteration, since it will be ignored in the average since
                 // it is regularly higher than the other iterations for all 3 approaches.
+                logger.info("For first iteration, using a batchCount of 100 since it will be ignored when calculating " +
+                        "average duration for each approach.");
                 batchCount = 100;
             }
             try {
@@ -177,9 +179,12 @@ public class PerformanceTester {
      * Before a test is run, delete any documents in the collection that documents will be written to.
      */
     private static void deleteCollection() {
-        DeleteCollectionsJob job = new DeleteCollectionsJob(COLLECTION);
-        job.setThreadCount(32);
-        job.run(databaseClient);
+//        DeleteCollectionsJob job = new DeleteCollectionsJob(COLLECTION);
+//        job.setThreadCount(32);
+//        job.run(databaseClient);
+        logger.info("Clearing database");
+        new DatabaseManager(manageClient).clearDatabase("java-tester-content", true);
+        logger.info("Finished clearing database");
     }
 
     /**
